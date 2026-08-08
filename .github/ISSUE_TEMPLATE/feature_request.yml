@@ -1,0 +1,32 @@
+name: Feature request
+description: Propose a product improvement with a measurable outcome.
+title: 'feat: '
+labels: [enhancement]
+body:
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Desired outcome
+      description: Which user problem should this solve?
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Proposed scope
+      description: Include acceptance criteria and explicit non-goals.
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Product area
+      options:
+        - Costs
+        - Usage
+        - Governance
+        - Licenses
+        - Recommendations
+        - Platform
+    validations:
+      required: true
