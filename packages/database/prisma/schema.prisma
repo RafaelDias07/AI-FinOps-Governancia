@@ -1,0 +1,348 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum OrganizationRole {
+  OWNER
+  ADMIN
+  FINOPS
+  VIEWER
+}
+
+enum Provider {
+  OPENAI
+  ANTHROPIC
+  VERTEX_AI
+}
+
+enum SyncStatus {
+  PENDING
+  RUNNING
+  SUCCEEDED
+  FAILED
+}
+
+enum LicenseStatus {
+  ACTIVE
+  SUSPENDED
+  CANCELLED
+}
+
+enum RecommendationStatus {
+  OPEN
+  ACCEPTED
+  DISMISSED
+}
+
+model Organization {
+  id                  String               @id @default(cuid())
+  name                String
+  slug                String               @unique
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  memberships         OrganizationMember[]
+  teams               Team[]
+  providerAccounts    ProviderAccount[]
+  providerCredentials ProviderCredential[]
+  providerProjects    ProviderProject[]
+  providerApiKeys     ProviderApiKey[]
+  providerUsers       ProviderUser[]
+  usageRecords        UsageRecord[]
+  costRecords         CostRecord[]
+  licenses            License[]
+  licenseAssignments  LicenseAssignment[]
+  budgets             Budget[]
+  alerts              Alert[]
+  recommendations     Recommendation[]
+  syncJobs            SyncJob[]
+  auditLogs           AuditLog[]
+}
+
+model User {
+  id                 String               @id @default(cuid())
+  email              String               @unique
+  name               String?
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
+  memberships        OrganizationMember[]
+  licenseAssignments LicenseAssignment[]
+  auditLogs          AuditLog[]           @relation("AuditActor")
+}
+
+model OrganizationMember {
+  id             String           @id @default(cuid())
+  organizationId String
+  userId         String
+  role           OrganizationRole @default(VIEWER)
+  createdAt      DateTime         @default(now())
+  organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user           User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, userId])
+  @@index([userId])
+}
+
+model Team {
+  id             String       @id @default(cuid())
+  organizationId String
+  name           String
+  costCenter     String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, name])
+}
+
+model ProviderAccount {
+  id             String               @id @default(cuid())
+  organizationId String
+  provider       Provider
+  externalId     String
+  displayName    String
+  isActive       Boolean              @default(true)
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+  organization   Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  credentials    ProviderCredential[]
+  projects       ProviderProject[]
+  apiKeys        ProviderApiKey[]
+  providerUsers  ProviderUser[]
+  syncJobs       SyncJob[]
+
+  @@unique([organizationId, provider, externalId])
+  @@index([organizationId, provider])
+}
+
+model ProviderCredential {
+  id                String          @id @default(cuid())
+  organizationId    String
+  providerAccountId String
+  encryptedValue    String
+  keyVersion        String          @default("local-v1")
+  lastFour          String?
+  expiresAt         DateTime?
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+  organization      Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  providerAccount   ProviderAccount @relation(fields: [providerAccountId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, providerAccountId])
+}
+
+model ProviderProject {
+  id                String           @id @default(cuid())
+  organizationId    String
+  providerAccountId String
+  externalId        String
+  name              String
+  labels            Json?
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+  organization      Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  providerAccount   ProviderAccount  @relation(fields: [providerAccountId], references: [id], onDelete: Cascade)
+  apiKeys           ProviderApiKey[]
+  usageRecords      UsageRecord[]
+  costRecords       CostRecord[]
+
+  @@unique([organizationId, providerAccountId, externalId])
+  @@index([organizationId, name])
+}
+
+model ProviderApiKey {
+  id                String           @id @default(cuid())
+  organizationId    String
+  providerAccountId String
+  providerProjectId String?
+  externalId        String
+  name              String
+  ownerEmail        String?
+  status            String
+  lastUsedAt        DateTime?
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+  organization      Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  providerAccount   ProviderAccount  @relation(fields: [providerAccountId], references: [id], onDelete: Cascade)
+  providerProject   ProviderProject? @relation(fields: [providerProjectId], references: [id], onDelete: SetNull)
+  usageRecords      UsageRecord[]
+
+  @@unique([organizationId, providerAccountId, externalId])
+  @@index([organizationId, ownerEmail])
+}
+
+model ProviderUser {
+  id                String          @id @default(cuid())
+  organizationId    String
+  providerAccountId String
+  externalId        String
+  email             String?
+  displayName       String?
+  metadata          Json?
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+  organization      Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  providerAccount   ProviderAccount @relation(fields: [providerAccountId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, providerAccountId, externalId])
+}
+
+model UsageRecord {
+  id                String           @id @default(cuid())
+  organizationId    String
+  providerProjectId String?
+  providerApiKeyId  String?
+  provider          Provider
+  sourceId          String
+  occurredAt        DateTime
+  model             String
+  inputTokens       BigInt           @default(0)
+  outputTokens      BigInt           @default(0)
+  requests          Int              @default(0)
+  rawPayload        Json?
+  createdAt         DateTime         @default(now())
+  organization      Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  providerProject   ProviderProject? @relation(fields: [providerProjectId], references: [id], onDelete: SetNull)
+  providerApiKey    ProviderApiKey?  @relation(fields: [providerApiKeyId], references: [id], onDelete: SetNull)
+
+  @@unique([organizationId, provider, sourceId])
+  @@index([organizationId, occurredAt])
+  @@index([organizationId, provider, model])
+}
+
+model CostRecord {
+  id                String           @id @default(cuid())
+  organizationId    String
+  providerProjectId String?
+  provider          Provider
+  sourceId          String
+  occurredAt        DateTime
+  amountMicros      BigInt
+  currency          String           @default("USD")
+  category          String
+  rawPayload        Json?
+  createdAt         DateTime         @default(now())
+  organization      Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  providerProject   ProviderProject? @relation(fields: [providerProjectId], references: [id], onDelete: SetNull)
+
+  @@unique([organizationId, provider, sourceId])
+  @@index([organizationId, occurredAt])
+}
+
+model License {
+  id                    String              @id @default(cuid())
+  organizationId        String
+  provider              Provider
+  productName           String
+  seatsPurchased        Int
+  monthlyUnitCostMicros BigInt
+  currency              String              @default("USD")
+  status                LicenseStatus       @default(ACTIVE)
+  renewalDate           DateTime?
+  createdAt             DateTime            @default(now())
+  updatedAt             DateTime            @updatedAt
+  organization          Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  assignments           LicenseAssignment[]
+
+  @@index([organizationId, provider])
+}
+
+model LicenseAssignment {
+  id             String       @id @default(cuid())
+  organizationId String
+  licenseId      String
+  userId         String?
+  assigneeEmail  String
+  assignedAt     DateTime     @default(now())
+  revokedAt      DateTime?
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  license        License      @relation(fields: [licenseId], references: [id], onDelete: Cascade)
+  user           User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@unique([organizationId, licenseId, assigneeEmail])
+}
+
+model Budget {
+  id             String       @id @default(cuid())
+  organizationId String
+  name           String
+  period         String
+  amountMicros   BigInt
+  currency       String       @default("USD")
+  scope          Json
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+}
+
+model Alert {
+  id             String       @id @default(cuid())
+  organizationId String
+  type           String
+  severity       String
+  title          String
+  details        Json
+  acknowledgedAt DateTime?
+  createdAt      DateTime     @default(now())
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, createdAt])
+}
+
+model Recommendation {
+  id                     String               @id @default(cuid())
+  organizationId         String
+  type                   String
+  title                  String
+  rationale              String
+  estimatedSavingsMicros BigInt?
+  status                 RecommendationStatus @default(OPEN)
+  evidence               Json
+  createdAt              DateTime             @default(now())
+  updatedAt              DateTime             @updatedAt
+  organization           Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, status])
+}
+
+model SyncJob {
+  id                String          @id @default(cuid())
+  organizationId    String
+  providerAccountId String
+  kind              String
+  status            SyncStatus      @default(PENDING)
+  cursor            String?
+  attempt           Int             @default(0)
+  startedAt         DateTime?
+  finishedAt        DateTime?
+  errorCode         String?
+  errorMessage      String?
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+  organization      Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  providerAccount   ProviderAccount @relation(fields: [providerAccountId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, status, createdAt])
+}
+
+model AuditLog {
+  id             String       @id @default(cuid())
+  organizationId String
+  actorUserId    String?
+  action         String
+  entityType     String
+  entityId       String?
+  metadata       Json?
+  ipAddress      String?
+  createdAt      DateTime     @default(now())
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  actor          User?        @relation("AuditActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, createdAt])
+}
